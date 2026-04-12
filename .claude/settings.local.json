@@ -7,7 +7,10 @@
       "Bash(brew install:*)",
       "Bash(git remote:*)",
       "Bash(npm run:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(git -C /Users/sanghankwon/Projects/watch-app log --oneline)",
+      "Bash(git -C /Users/sanghankwon/Projects/watch-app remote -v)",
+      "Bash(git fetch:*)"
     ]
   }
 }
