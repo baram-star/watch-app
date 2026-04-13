@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { createClient } from "@/lib/supabase";
 
 export default function SignupPage() {
@@ -64,9 +65,14 @@ export default function SignupPage() {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen px-6 bg-white">
         <div className="flex flex-col items-center gap-2 mb-10">
-          <div className="w-14 h-14 rounded-xl bg-[#0D9488] flex items-center justify-center">
-            <span className="text-white text-2xl font-bold">W</span>
-          </div>
+          <Image
+            src="/logo.png"
+            alt="WATCH 로고"
+            width={160}
+            height={80}
+            className="object-contain"
+            priority
+          />
           <h1 className="text-2xl font-bold text-gray-900">회원가입</h1>
           <p className="text-sm text-gray-500">사용 모드를 선택해주세요</p>
         </div>
