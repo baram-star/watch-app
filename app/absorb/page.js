@@ -15,6 +15,7 @@ export default function AbsorbPage() {
   const [form, setForm] = useState({
     book_title: "",
     pages_read: "",
+    reading_minutes: "",
     memo: "",
   });
 
@@ -56,6 +57,7 @@ export default function AbsorbPage() {
         user_id: profile.id,
         book_title: form.book_title,
         pages_read: form.pages_read ? parseInt(form.pages_read) : null,
+        reading_minutes: form.reading_minutes ? parseInt(form.reading_minutes) : null,
         memo: form.memo || null,
         started_at: new Date().toISOString().split("T")[0],
       })
@@ -64,8 +66,9 @@ export default function AbsorbPage() {
 
     if (data) {
       setBooks([data, ...books]);
-      setForm({ book_title: "", pages_read: "", memo: "" });
+      setForm({ book_title: "", pages_read: "", reading_minutes: "", memo: "" });
       setShowAdd(false);
+      setTimeout(() => router.push("/dashboard"), 500);
     }
   }
 
@@ -78,6 +81,7 @@ export default function AbsorbPage() {
       .update({
         book_title: form.book_title,
         pages_read: form.pages_read ? parseInt(form.pages_read) : null,
+        reading_minutes: form.reading_minutes ? parseInt(form.reading_minutes) : null,
         memo: form.memo || null,
       })
       .eq("id", editing)
@@ -116,6 +120,7 @@ export default function AbsorbPage() {
     setForm({
       book_title: book.book_title,
       pages_read: book.pages_read?.toString() || "",
+      reading_minutes: book.reading_minutes?.toString() || "",
       memo: book.memo || "",
     });
     setShowAdd(false);
@@ -152,7 +157,7 @@ export default function AbsorbPage() {
         {/* 추가 버튼 */}
         {!showAdd && !editing && (
           <button
-            onClick={() => { setShowAdd(true); setForm({ book_title: "", pages_read: "", memo: "" }); }}
+            onClick={() => { setShowAdd(true); setForm({ book_title: "", pages_read: "", reading_minutes: "", memo: "" }); }}
             className="w-full py-3 rounded-2xl border-2 border-dashed border-gray-300 text-gray-500 font-medium hover:border-[#0891B2] hover:text-[#0891B2] transition-colors"
           >
             + 새 책 추가
@@ -177,15 +182,27 @@ export default function AbsorbPage() {
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">읽은 페이지</label>
-              <input
-                type="number"
-                value={form.pages_read}
-                onChange={(e) => setForm({ ...form, pages_read: e.target.value })}
-                placeholder="페이지 수"
-                className="w-full px-4 py-3 rounded-xl border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#0891B2]"
-              />
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">읽은 페이지</label>
+                <input
+                  type="number"
+                  value={form.pages_read}
+                  onChange={(e) => setForm({ ...form, pages_read: e.target.value })}
+                  placeholder="페이지 수"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#0891B2]"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">독서 시간 (분)</label>
+                <input
+                  type="number"
+                  value={form.reading_minutes}
+                  onChange={(e) => setForm({ ...form, reading_minutes: e.target.value })}
+                  placeholder="예: 30"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#0891B2]"
+                />
+              </div>
             </div>
 
             <div>
@@ -229,6 +246,9 @@ export default function AbsorbPage() {
                       <div className="flex gap-3 mt-1">
                         {book.pages_read && (
                           <span className="text-xs text-gray-400">{book.pages_read}p 읽음</span>
+                        )}
+                        {book.reading_minutes && (
+                          <span className="text-xs text-gray-400">{book.reading_minutes}분</span>
                         )}
                         {book.started_at && (
                           <span className="text-xs text-gray-400">
@@ -286,6 +306,7 @@ export default function AbsorbPage() {
                       <h3 className="font-bold text-gray-900">{book.book_title}</h3>
                       <span className="text-xs text-gray-400">
                         {book.pages_read && `${book.pages_read}p · `}
+                        {book.reading_minutes && `${book.reading_minutes}분 · `}
                         {new Date(book.completed_at).toLocaleDateString("ko-KR")} 완독
                       </span>
                     </div>
@@ -312,7 +333,7 @@ export default function AbsorbPage() {
         )}
       </div>
 
-      <BottomNav current="absorb" />
+      <BottomNav current="home" />
     </div>
   );
 }

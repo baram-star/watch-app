@@ -88,7 +88,9 @@ export default function WonderPage() {
 
     setSaving(false);
     setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    setTimeout(() => {
+      router.push("/dashboard");
+    }, 800);
   }
 
   if (loading) {
@@ -170,7 +172,7 @@ export default function WonderPage() {
         </button>
       </div>
 
-      <BottomNav current="wonder" />
+      <BottomNav current="home" />
     </div>
   );
 }
