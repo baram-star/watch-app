@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import BottomNav from "@/components/BottomNav";
+import GrowthTree from "@/components/GrowthTree";
 
 const WATCH_DOMAINS = [
   { key: "heal", letter: "H", label: "수면", subtitle: "Heal", color: "#059669", desc: "기상/취침 시각을 기록해요" },
@@ -21,6 +22,7 @@ export default function DashboardPage() {
   const [completedDomains, setCompletedDomains] = useState({});
   const [animating, setAnimating] = useState(null);
   const [debugInfo, setDebugInfo] = useState("");
+  const [streak, setStreak] = useState(0);
 
   // 모달 상태
   const [activeModal, setActiveModal] = useState(null);
@@ -112,6 +114,24 @@ export default function DashboardPage() {
         });
         setCompletedDomains(completed);
       }
+
+      // 스트릭 계산
+      const { data: streakLogs } = await supabase
+        .from("watch_daily_logs")
+        .select("log_date")
+        .eq("user_id", profileData.id)
+        .eq("completed", true)
+        .order("log_date", { ascending: false })
+        .limit(100);
+      const uniqueDates = [...new Set((streakLogs || []).map((l) => l.log_date))].sort().reverse();
+      let streakCount = 0;
+      for (let i = 0; i < uniqueDates.length; i++) {
+        const expected = new Date(today);
+        expected.setDate(expected.getDate() - i);
+        if (uniqueDates[i] === expected.toISOString().split("T")[0]) streakCount++;
+        else break;
+      }
+      setStreak(streakCount);
 
       // 오늘의 수면 기록 로드
       const { data: sleepLog } = await supabase
@@ -393,7 +413,15 @@ export default function DashboardPage() {
             <p className="text-teal-100 text-sm">{todayStr}</p>
             <h1 className="text-xl font-bold mt-1">{profile.display_name}님, 안녕하세요!</h1>
           </div>
-          <button onClick={handleLogout} className="text-sm text-teal-200 hover:text-white">로그아웃</button>
+          <div className="flex flex-col items-end gap-1">
+            {streak > 0 && (
+              <div className="flex items-center gap-1 bg-white/20 rounded-full px-3 py-1">
+                <span className="text-base">🔥</span>
+                <span className="text-white font-bold text-sm">{streak}일 연속</span>
+              </div>
+            )}
+            <button onClick={handleLogout} className="text-xs text-teal-200 hover:text-white">로그아웃</button>
+          </div>
         </div>
         <div className="mt-2">
           <div className="flex items-center justify-between mb-2">
@@ -738,6 +766,11 @@ export default function DashboardPage() {
           </div>
         </Modal>
       )}
+
+      {/* 성장 나무 */}
+      <div className="px-5 mt-4">
+        <GrowthTree streak={streak} />
+      </div>
 
       <BottomNav current="home" />
     </div>
