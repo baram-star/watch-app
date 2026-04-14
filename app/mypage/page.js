@@ -87,7 +87,7 @@ export default function MyPage() {
   };
 
   const saveNotifSettings = async () => {
-    if (notifEnabled && Notification.permission !== "granted") {
+    if (notifEnabled && typeof Notification !== "undefined" && Notification.permission !== "granted") {
       const perm = await Notification.requestPermission();
       if (perm !== "granted") { alert("알림 권한이 거부되었습니다."); return; }
     }

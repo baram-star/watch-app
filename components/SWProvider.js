@@ -10,7 +10,7 @@ export default function SWProvider() {
     const enabled = localStorage.getItem("watch_notif_enabled") === "true";
     const time = localStorage.getItem("watch_notif_time") || "20:00";
     if (!enabled) return;
-    if (Notification.permission !== "granted") return;
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
 
     const [h, m] = time.split(":").map(Number);
     const now = new Date();
