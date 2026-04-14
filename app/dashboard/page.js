@@ -25,6 +25,7 @@ export default function DashboardPage() {
   // 모달 상태
   const [activeModal, setActiveModal] = useState(null);
   const [modalSaving, setModalSaving] = useState(false);
+  const [modalError, setModalError] = useState("");
 
   // 수면 기록
   const [sleepData, setSleepData] = useState({ wake_time: "", sleep_time: "", sleep_quality: 3, notes: "" });
@@ -32,6 +33,11 @@ export default function DashboardPage() {
   const [thinkData, setThinkData] = useState({ duration: "", notes: "" });
   // 놀이 기록
   const [createData, setCreateData] = useState({ duration: "", notes: "" });
+  // 성찰 기록
+  const [wonderData, setWonderData] = useState({ gratitude_1: "", gratitude_2: "", gratitude_3: "", journal: "" });
+  const [wonderExistingId, setWonderExistingId] = useState(null);
+  // 독서 기록
+  const [absorbForm, setAbsorbForm] = useState({ book_title: "", pages_read: "", reading_minutes: "", memo: "" });
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -68,19 +74,22 @@ export default function DashboardPage() {
         .eq("user_id", profileData.id)
         .eq("is_active", true);
 
-      if (!routineData || routineData.length === 0) {
-        const defaultRoutines = WATCH_DOMAINS.map((d, i) => ({
+      // 누락된 도메인 루틴 추가 생성
+      const existingDomains = (routineData || []).map((r) => r.domain);
+      const missingDomains = WATCH_DOMAINS.filter((d) => !existingDomains.includes(d.key));
+      if (missingDomains.length > 0) {
+        const newRoutines = missingDomains.map((d, i) => ({
           user_id: profileData.id,
           domain: d.key,
           title: `${d.label} 루틴`,
-          sort_order: i,
+          sort_order: WATCH_DOMAINS.findIndex((x) => x.key === d.key),
           is_active: true,
         }));
         const { data: inserted } = await supabase
           .from("watch_routines")
-          .insert(defaultRoutines)
+          .insert(newRoutines)
           .select();
-        routineData = inserted || [];
+        routineData = [...(routineData || []), ...(inserted || [])];
       }
 
       setRoutines(routineData);
@@ -133,16 +142,8 @@ export default function DashboardPage() {
   }, [loadData]);
 
   // 카드 클릭 핸들러
-  const handleCardClick = (domainKey) => {
-    if (domainKey === "wonder") {
-      router.push("/wonder");
-      return;
-    }
-    if (domainKey === "absorb") {
-      router.push("/absorb");
-      return;
-    }
-    // heal, think, create는 모달 열기
+  const handleCardClick = async (domainKey) => {
+    setModalError("");
     setActiveModal(domainKey);
 
     // 이미 완료된 경우 메모 복원
@@ -155,11 +156,40 @@ export default function DashboardPage() {
         setCreateData({ duration: parts[0] || "", notes: parts[1] || "" });
       }
     }
+
+    // 성찰: 오늘 기존 기록 로드
+    if (domainKey === "wonder") {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("watch_reflections")
+        .select("*")
+        .eq("user_id", profile.id)
+        .eq("reflection_date", today)
+        .single();
+      if (data) {
+        setWonderData({
+          gratitude_1: data.gratitude_1 || "",
+          gratitude_2: data.gratitude_2 || "",
+          gratitude_3: data.gratitude_3 || "",
+          journal: data.journal || "",
+        });
+        setWonderExistingId(data.id);
+      } else {
+        setWonderData({ gratitude_1: "", gratitude_2: "", gratitude_3: "", journal: "" });
+        setWonderExistingId(null);
+      }
+    }
+
+    // 독서: 폼 초기화
+    if (domainKey === "absorb") {
+      setAbsorbForm({ book_title: "", pages_read: "", reading_minutes: "", memo: "" });
+    }
   };
 
   // 수면 저장
   const saveSleep = async () => {
     setModalSaving(true);
+    setModalError("");
     const supabase = createClient();
 
     // sleep_logs에 저장/업데이트
@@ -186,26 +216,71 @@ export default function DashboardPage() {
     }
 
     // daily_logs에 완료 표시
-    await markDomainComplete("heal", `${sleepData.wake_time || ""}~${sleepData.sleep_time || ""}`);
+    const result = await markDomainComplete("heal", `${sleepData.wake_time || ""}~${sleepData.sleep_time || ""}`);
     setModalSaving(false);
+    if (result?.error) { setModalError(result.error); return; }
     setActiveModal(null);
   };
 
   // 학습 저장
   const saveThink = async () => {
     setModalSaving(true);
+    setModalError("");
     const notes = `${thinkData.duration}|${thinkData.notes}`;
-    await markDomainComplete("think", notes);
+    const result = await markDomainComplete("think", notes);
     setModalSaving(false);
+    if (result?.error) { setModalError(result.error); return; }
     setActiveModal(null);
   };
 
   // 놀이 저장
   const saveCreate = async () => {
     setModalSaving(true);
+    setModalError("");
     const notes = `${createData.duration}|${createData.notes}`;
-    await markDomainComplete("create", notes);
+    const result = await markDomainComplete("create", notes);
     setModalSaving(false);
+    if (result?.error) { setModalError(result.error); return; }
+    setActiveModal(null);
+  };
+
+  // 성찰 저장
+  const saveWonder = async () => {
+    setModalSaving(true);
+    setModalError("");
+    const supabase = createClient();
+    const payload = { user_id: profile.id, reflection_date: today, ...wonderData };
+    if (wonderExistingId) {
+      await supabase.from("watch_reflections").update(wonderData).eq("id", wonderExistingId);
+    } else {
+      const { data } = await supabase.from("watch_reflections").insert(payload).select().single();
+      if (data) setWonderExistingId(data.id);
+    }
+    const notes = [wonderData.gratitude_1, wonderData.gratitude_2, wonderData.gratitude_3].filter(Boolean).join(", ");
+    const result = await markDomainComplete("wonder", notes);
+    setModalSaving(false);
+    if (result?.error) { setModalError(result.error); return; }
+    setActiveModal(null);
+  };
+
+  // 독서 저장
+  const saveAbsorb = async () => {
+    if (!absorbForm.book_title.trim()) { setModalError("책 제목을 입력해주세요"); return; }
+    setModalSaving(true);
+    setModalError("");
+    const supabase = createClient();
+    await supabase.from("watch_reading_logs").insert({
+      user_id: profile.id,
+      book_title: absorbForm.book_title,
+      pages_read: absorbForm.pages_read ? parseInt(absorbForm.pages_read) : null,
+      reading_minutes: absorbForm.reading_minutes ? parseInt(absorbForm.reading_minutes) : null,
+      memo: absorbForm.memo || null,
+      started_at: today,
+    });
+    const notes = `${absorbForm.book_title}${absorbForm.reading_minutes ? ` · ${absorbForm.reading_minutes}분` : ""}`;
+    const result = await markDomainComplete("absorb", notes);
+    setModalSaving(false);
+    if (result?.error) { setModalError(result.error); return; }
     setActiveModal(null);
   };
 
@@ -213,14 +288,18 @@ export default function DashboardPage() {
   const markDomainComplete = async (domainKey, notes) => {
     const supabase = createClient();
     const routine = routines.find((r) => r.domain === domainKey);
-    if (!routine) return;
+    if (!routine) {
+      return { error: `루틴을 찾을 수 없습니다 (domain: ${domainKey})` };
+    }
 
     // 기존 기록이 있으면 업데이트, 없으면 생성
     if (completedDomains[domainKey]) {
-      await supabase
+      const { error } = await supabase
         .from("watch_daily_logs")
         .update({ notes, completed: true, completed_at: new Date().toISOString() })
         .eq("id", completedDomains[domainKey].logId);
+
+      if (error) return { error: error.message };
 
       setCompletedDomains((prev) => ({
         ...prev,
@@ -228,7 +307,7 @@ export default function DashboardPage() {
       }));
     } else {
       setAnimating(domainKey);
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("watch_daily_logs")
         .insert({
           user_id: profile.id,
@@ -241,6 +320,11 @@ export default function DashboardPage() {
         .select()
         .single();
 
+      if (error) {
+        setTimeout(() => setAnimating(null), 300);
+        return { error: error.message };
+      }
+
       if (data) {
         setCompletedDomains((prev) => ({
           ...prev,
@@ -249,6 +333,7 @@ export default function DashboardPage() {
       }
       setTimeout(() => setAnimating(null), 600);
     }
+    return { error: null };
   };
 
   // 완료 취소
@@ -403,7 +488,7 @@ export default function DashboardPage() {
 
       {/* 수면 모달 */}
       {activeModal === "heal" && (
-        <Modal title="수면 기록" color="#059669" onClose={() => setActiveModal(null)}>
+        <Modal title="수면 기록" color="#059669" onClose={() => setActiveModal(null)} error={modalError}>
           <div className="flex flex-col gap-4">
             <div className="flex gap-3">
               <div className="flex-1">
@@ -427,19 +512,28 @@ export default function DashboardPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">수면 질 평가</label>
-              <div className="flex gap-2 justify-between">
-                {[1, 2, 3, 4, 5].map((q) => (
+              <label className="block text-sm font-medium text-gray-700 mb-3">수면 질 평가</label>
+              <div className="flex gap-2">
+                {[
+                  { q: 1, face: <SleepFace type="terrible" />, label: "최악" },
+                  { q: 2, face: <SleepFace type="bad" />, label: "나쁨" },
+                  { q: 3, face: <SleepFace type="neutral" />, label: "보통" },
+                  { q: 4, face: <SleepFace type="good" />, label: "좋음" },
+                  { q: 5, face: <SleepFace type="great" />, label: "최고" },
+                ].map(({ q, face, label }) => (
                   <button
                     key={q}
                     onClick={() => setSleepData({ ...sleepData, sleep_quality: q })}
-                    className={`flex-1 py-2.5 rounded-xl text-sm font-medium border transition-colors ${
+                    className={`flex-1 flex flex-col items-center py-3 rounded-2xl border-2 transition-all ${
                       sleepData.sleep_quality === q
-                        ? "bg-[#059669] text-white border-[#059669]"
-                        : "border-gray-300 text-gray-500"
+                        ? "border-[#059669] bg-green-50 scale-105"
+                        : "border-gray-200 bg-white"
                     }`}
                   >
-                    {q === 1 ? "😫" : q === 2 ? "😕" : q === 3 ? "😐" : q === 4 ? "😊" : "😴"}
+                    <span className="text-3xl leading-none mb-1">{face}</span>
+                    <span className={`text-xs font-medium ${sleepData.sleep_quality === q ? "text-[#059669]" : "text-gray-400"}`}>
+                      {label}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -469,7 +563,7 @@ export default function DashboardPage() {
 
       {/* 학습 모달 */}
       {activeModal === "think" && (
-        <Modal title="학습 기록" color="#7C3AED" onClose={() => setActiveModal(null)}>
+        <Modal title="학습 기록" color="#7C3AED" onClose={() => setActiveModal(null)} error={modalError}>
           <div className="flex flex-col gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">학습 시간 (분)</label>
@@ -506,7 +600,7 @@ export default function DashboardPage() {
 
       {/* 놀이 모달 */}
       {activeModal === "create" && (
-        <Modal title="놀이 기록" color="#EA580C" onClose={() => setActiveModal(null)}>
+        <Modal title="놀이 기록" color="#EA580C" onClose={() => setActiveModal(null)} error={modalError}>
           <div className="flex flex-col gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">활동 시간 (분)</label>
@@ -541,17 +635,121 @@ export default function DashboardPage() {
         </Modal>
       )}
 
+      {/* 성찰 모달 */}
+      {activeModal === "wonder" && (
+        <Modal title="성찰 기록" color="#0D9488" onClose={() => setActiveModal(null)} error={modalError}>
+          <div className="flex flex-col gap-4 max-h-[70vh] overflow-y-auto">
+            <div>
+              <p className="text-sm font-medium text-gray-700 mb-3">오늘 감사한 3가지</p>
+              {[1, 2, 3].map((num) => (
+                <div key={num} className="flex items-center gap-3 mb-2">
+                  <div className="w-6 h-6 rounded-full bg-[#0D9488] flex items-center justify-center flex-shrink-0">
+                    <span className="text-white text-xs font-bold">{num}</span>
+                  </div>
+                  <input
+                    type="text"
+                    value={wonderData[`gratitude_${num}`]}
+                    onChange={(e) => setWonderData({ ...wonderData, [`gratitude_${num}`]: e.target.value })}
+                    placeholder={`감사한 것 ${num}`}
+                    className="flex-1 px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#0D9488]"
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">성찰 일기</label>
+              <textarea
+                value={wonderData.journal}
+                onChange={(e) => setWonderData({ ...wonderData, journal: e.target.value })}
+                placeholder="오늘은 어떤 하루였나요?"
+                rows={4}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#0D9488]"
+              />
+            </div>
+
+            <button
+              onClick={saveWonder}
+              disabled={modalSaving}
+              className="w-full py-3.5 rounded-xl bg-[#0D9488] text-white font-semibold disabled:opacity-50"
+            >
+              {modalSaving ? "저장 중..." : wonderExistingId ? "수정하기" : "저장하기"}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* 독서 모달 */}
+      {activeModal === "absorb" && (
+        <Modal title="독서 기록" color="#0891B2" onClose={() => setActiveModal(null)} error={modalError}>
+          <div className="flex flex-col gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">책 제목</label>
+              <input
+                type="text"
+                value={absorbForm.book_title}
+                onChange={(e) => setAbsorbForm({ ...absorbForm, book_title: e.target.value })}
+                placeholder="읽은 책 제목"
+                className="w-full px-4 py-3 rounded-xl border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#0891B2]"
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">읽은 페이지</label>
+                <input
+                  type="number"
+                  value={absorbForm.pages_read}
+                  onChange={(e) => setAbsorbForm({ ...absorbForm, pages_read: e.target.value })}
+                  placeholder="페이지"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#0891B2]"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-sm font-medium text-gray-700 mb-1">독서 시간 (분)</label>
+                <input
+                  type="number"
+                  value={absorbForm.reading_minutes}
+                  onChange={(e) => setAbsorbForm({ ...absorbForm, reading_minutes: e.target.value })}
+                  placeholder="예: 30"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-[#0891B2]"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">메모</label>
+              <textarea
+                value={absorbForm.memo}
+                onChange={(e) => setAbsorbForm({ ...absorbForm, memo: e.target.value })}
+                placeholder="인상 깊은 내용이나 느낀 점"
+                rows={3}
+                className="w-full px-4 py-3 rounded-xl border border-gray-300 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#0891B2]"
+              />
+            </div>
+
+            <button
+              onClick={saveAbsorb}
+              disabled={modalSaving}
+              className="w-full py-3.5 rounded-xl bg-[#0891B2] text-white font-semibold disabled:opacity-50"
+            >
+              {modalSaving ? "저장 중..." : "저장하기"}
+            </button>
+          </div>
+        </Modal>
+      )}
+
       <BottomNav current="home" />
     </div>
   );
 }
 
 // 모달 컴포넌트
-function Modal({ title, color, onClose, children }) {
+function Modal({ title, color, onClose, error, children }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative w-full max-w-lg bg-white rounded-t-3xl px-5 pt-6 pb-8 animate-slide-up">
+    <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40" />
+      <div className="relative z-10 w-full max-w-lg bg-white rounded-t-3xl px-5 pt-6 pb-8 animate-slide-up" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: color }}>
@@ -565,8 +763,61 @@ function Modal({ title, color, onClose, children }) {
             </svg>
           </button>
         </div>
+        {error && (
+          <p className="text-red-500 text-sm mb-3 bg-red-50 rounded-xl px-3 py-2">{error}</p>
+        )}
         {children}
       </div>
     </div>
   );
+}
+
+// 수면 질 SVG 아이콘
+function SleepFace({ type }) {
+  const faces = {
+    terrible: (
+      <svg viewBox="0 0 36 36" className="w-8 h-8" fill="none">
+        <circle cx="18" cy="18" r="17" fill="#FEE2E2" stroke="#FCA5A5" strokeWidth="1.5"/>
+        <ellipse cx="12.5" cy="15" rx="2" ry="2.5" fill="#EF4444"/>
+        <ellipse cx="23.5" cy="15" rx="2" ry="2.5" fill="#EF4444"/>
+        <path d="M11 25 Q18 20 25 25" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" fill="none"/>
+        <path d="M10 11 L14 13M26 11 L22 13" stroke="#EF4444" strokeWidth="1.5" strokeLinecap="round"/>
+      </svg>
+    ),
+    bad: (
+      <svg viewBox="0 0 36 36" className="w-8 h-8" fill="none">
+        <circle cx="18" cy="18" r="17" fill="#FEF3C7" stroke="#FCD34D" strokeWidth="1.5"/>
+        <ellipse cx="12.5" cy="15" rx="2" ry="2.5" fill="#D97706"/>
+        <ellipse cx="23.5" cy="15" rx="2" ry="2.5" fill="#D97706"/>
+        <path d="M12 24 Q18 21 24 24" stroke="#D97706" strokeWidth="2" strokeLinecap="round" fill="none"/>
+      </svg>
+    ),
+    neutral: (
+      <svg viewBox="0 0 36 36" className="w-8 h-8" fill="none">
+        <circle cx="18" cy="18" r="17" fill="#F3F4F6" stroke="#D1D5DB" strokeWidth="1.5"/>
+        <ellipse cx="12.5" cy="15" rx="2" ry="2.5" fill="#6B7280"/>
+        <ellipse cx="23.5" cy="15" rx="2" ry="2.5" fill="#6B7280"/>
+        <path d="M12 24 L24 24" stroke="#6B7280" strokeWidth="2" strokeLinecap="round"/>
+      </svg>
+    ),
+    good: (
+      <svg viewBox="0 0 36 36" className="w-8 h-8" fill="none">
+        <circle cx="18" cy="18" r="17" fill="#D1FAE5" stroke="#6EE7B7" strokeWidth="1.5"/>
+        <ellipse cx="12.5" cy="15" rx="2" ry="2.5" fill="#059669"/>
+        <ellipse cx="23.5" cy="15" rx="2" ry="2.5" fill="#059669"/>
+        <path d="M12 22 Q18 27 24 22" stroke="#059669" strokeWidth="2" strokeLinecap="round" fill="none"/>
+      </svg>
+    ),
+    great: (
+      <svg viewBox="0 0 36 36" className="w-8 h-8" fill="none">
+        <circle cx="18" cy="18" r="17" fill="#CFFAFE" stroke="#67E8F9" strokeWidth="1.5"/>
+        <ellipse cx="12.5" cy="14" rx="2.5" ry="3" fill="#0E7490"/>
+        <ellipse cx="23.5" cy="14" rx="2.5" ry="3" fill="#0E7490"/>
+        <path d="M10 21 Q18 29 26 21" stroke="#0E7490" strokeWidth="2" strokeLinecap="round" fill="none"/>
+        <path d="M10 21 Q18 29 26 21 Q26 21 18 21 Q10 21 10 21Z" fill="#CFFAFE" opacity="0.5"/>
+        <path d="M13 21 Q18 26 23 21" stroke="none" fill="#0E7490" opacity="0.15"/>
+      </svg>
+    ),
+  };
+  return faces[type] || null;
 }

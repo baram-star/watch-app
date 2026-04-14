@@ -14,6 +14,15 @@ const geistMono = Geist_Mono({
 export const metadata = {
   title: "WATCH - 생활습관 루틴",
   description: "WATCH 생활습관 루틴 앱 - 수면, 학습, 독서, 놀이, 성찰",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "WATCH",
+  },
+  icons: {
+    apple: "/logo.png",
+  },
 };
 
 export default function RootLayout({ children }) {
