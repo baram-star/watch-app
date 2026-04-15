@@ -9,7 +9,7 @@ import { createClient } from "@/lib/supabase";
 const ROLES = [
   {
     key: "student",
-    letter: "C",
+    letter: "S",
     label: "학생 모드",
     desc: "스스로 루틴을 설정하고 기록해요",
     color: "#0D9488",
