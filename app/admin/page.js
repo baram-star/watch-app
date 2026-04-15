@@ -54,7 +54,7 @@ export default function AdminPage() {
   async function loadUsers() {
     const res = await fetch("/api/admin/users");
     const json = await res.json();
-    if (json.error) { alert(json.error); return; }
+    if (json.error) { console.error(json.error); return; }
     setUsers(json.users || []);
   }
 
@@ -78,10 +78,18 @@ export default function AdminPage() {
     setFiltered(result);
   }, [users, search, roleFilter, sortBy]);
 
+  const [savedScroll, setSavedScroll] = useState(0);
+
   function openUser(u) {
+    setSavedScroll(window.scrollY);
     setSelectedUser(u);
     setNewPassword(""); setPwMsg("");
     setDeleteConfirm(false); setDeleteMsg("");
+  }
+
+  function closeModal() {
+    setSelectedUser(null);
+    setTimeout(() => window.scrollTo({ top: savedScroll }), 0);
   }
 
   async function resetPassword() {
@@ -106,8 +114,11 @@ export default function AdminPage() {
     const json = await res.json();
     setDeleting(false);
     if (json.error) { setDeleteMsg("❌ " + json.error); return; }
+    // 로컬 상태에서 즉시 제거 (API 재호출 없음)
+    const deletedId = selectedUser.id;
+    setUsers(prev => prev.filter(u => u.id !== deletedId));
     setSelectedUser(null);
-    await loadUsers();
+    setTimeout(() => window.scrollTo({ top: savedScroll }), 0);
   }
 
   const todayStr = new Date().toLocaleDateString("ko-KR", { month: "long", day: "numeric" });
@@ -228,7 +239,7 @@ export default function AdminPage() {
 
       {/* 사용자 상세 모달 */}
       {selectedUser && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => setSelectedUser(null)}>
+        <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={closeModal}>
           <div className="absolute inset-0 bg-black/40" />
           <div className="relative z-10 w-full max-w-lg bg-white rounded-t-3xl px-5 pt-6 pb-10 max-h-[90vh] overflow-y-auto"
             onClick={e => e.stopPropagation()}>
@@ -250,7 +261,7 @@ export default function AdminPage() {
                   <p className="text-xs text-gray-400">{selectedUser.email}</p>
                 </div>
               </div>
-              <button onClick={() => setSelectedUser(null)} className="text-gray-400 hover:text-gray-600">
+              <button onClick={closeModal} className="text-gray-400 hover:text-gray-600">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
